@@ -1,3 +1,13 @@
+import subprocess
+import sys
+
+# Otomatis instal xlrd dan openpyxl jika belum ada di server
+try:
+    import xlrd
+    import openpyxl
+except ImportError:
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "xlrd", "openpyxl"])
+    
 import streamlit as st
 import pandas as pd
 import numpy as np
