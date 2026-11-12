@@ -86,7 +86,7 @@ def make_features(series):
     return X, y
 
 # ==========================================
-# 4. PIPELINE MODELING & ROLLING-ORIGIN CV
+# 4. PIPELINE MODELING & ROLLING-ORIGIN CV (Disesuaikan dengan Jurnal Revisi 2)
 # ==========================================
 def train_and_evaluate_model(sku_name, weekly_pivot):
     X, y = make_features(weekly_pivot[sku_name])
@@ -96,7 +96,7 @@ def train_and_evaluate_model(sku_name, weekly_pivot):
     # 5-Fold Rolling-Origin CV untuk cari bobot Validasi
     tscv = TimeSeriesSplit(n_splits=5)
     oof_preds = {'RF': [], 'SVR': [], 'LSTM': []}
-    oof_y, oof_X = [], []
+    oof_y = []
     
     for tr_idx, val_idx in tscv.split(X_train):
         X_tr, y_tr = X_train[tr_idx], y_train[tr_idx]
@@ -108,14 +108,17 @@ def train_and_evaluate_model(sku_name, weekly_pivot):
         X_val_s = sc_X.transform(X_val)
         y_tr_s = sc_y.fit_transform(y_tr.reshape(-1, 1)).ravel()
         
-        # RF
-        rf = RandomForestRegressor(n_estimators=100, max_depth=4, random_state=42)
-        rf.fit(X_tr, y_tr)
+        # PERBAIKAN: Gunakan Bobot Resensi (Recency Weighting) eksponensial sesuai Jurnal
+        sw = np.exp(np.linspace(-1.8, 0, len(y_tr)))
+        
+        # RF dengan recency weight
+        rf = RandomForestRegressor(n_estimators=100, max_depth=4, min_samples_leaf=4, random_state=42)
+        rf.fit(X_tr, y_tr, sample_weight=sw)
         oof_preds['RF'].extend(np.maximum(0.0, rf.predict(X_val)))
         
-        # SVR
+        # SVR dengan recency weight
         svr = SVR(kernel='rbf', C=1.5, gamma='scale')
-        svr.fit(X_tr_s, y_tr_s)
+        svr.fit(X_tr_s, y_tr_s, sample_weight=sw)
         oof_preds['SVR'].extend(np.maximum(0.0, sc_y.inverse_transform(svr.predict(X_val_s).reshape(-1, 1)).ravel()))
         
         # LSTM
@@ -129,12 +132,10 @@ def train_and_evaluate_model(sku_name, weekly_pivot):
         oof_preds['LSTM'].extend(p_lstm)
         
         oof_y.extend(y_val)
-        oof_X.append(X_val)
         
     oof_y = np.array(oof_y)
-    oof_X = np.vstack(oof_X)
     
-    # Hitung Temporal Validation Error untuk Bobot
+    # Hitung Temporal Validation Error untuk Bobot Ensemble
     mae_val_rf = np.mean(np.abs(oof_y - np.array(oof_preds['RF']))) + 1e-6
     mae_val_svr = np.mean(np.abs(oof_y - np.array(oof_preds['SVR']))) + 1e-6
     mae_val_lstm = np.mean(np.abs(oof_y - np.array(oof_preds['LSTM']))) + 1e-6
@@ -144,7 +145,7 @@ def train_and_evaluate_model(sku_name, weekly_pivot):
     w_svr = (1/mae_val_svr) / inv_sum
     w_lstm = (1/mae_val_lstm) / inv_sum
     
-    # Ekstrak standar deviasi error (Sigma_e) dari ensemble validasi untuk Safety Stock!
+    # Ekstrak standar deviasi error (Sigma_e) dari ensemble validasi temporal
     val_ens = w_rf*np.array(oof_preds['RF']) + w_svr*np.array(oof_preds['SVR']) + w_lstm*np.array(oof_preds['LSTM'])
     sigma_e_val = np.std(oof_y - val_ens, ddof=1)
     
@@ -154,10 +155,15 @@ def train_and_evaluate_model(sku_name, weekly_pivot):
     X_test_s = sc_X_full.transform(X_test)
     y_train_s = sc_y_full.fit_transform(y_train.reshape(-1, 1)).ravel()
     
-    rf_full = RandomForestRegressor(n_estimators=100, max_depth=4, random_state=42).fit(X_train, y_train)
+    # PERBAIKAN: Bobot resensi untuk model penuh
+    sw_full = np.exp(np.linspace(-1.8, 0, len(y_train)))
+    
+    rf_full = RandomForestRegressor(n_estimators=100, max_depth=4, min_samples_leaf=4, random_state=42)
+    rf_full.fit(X_train, y_train, sample_weight=sw_full)
     p_rf_test = np.maximum(0.0, rf_full.predict(X_test))
     
-    svr_full = SVR(kernel='rbf', C=1.5, gamma='scale').fit(X_train_s, y_train_s)
+    svr_full = SVR(kernel='rbf', C=1.5, gamma='scale')
+    svr_full.fit(X_train_s, y_train_s, sample_weight=sw_full)
     p_svr_test = np.maximum(0.0, sc_y_full.inverse_transform(svr_full.predict(X_test_s).reshape(-1, 1)).ravel())
     
     lstm_full = Sequential([LSTM(32, activation='relu', input_shape=(X_train_s.shape[1], 1)), Dropout(0.2), Dense(1)])
