@@ -1,9 +1,7 @@
 streamlit
 pandas
 numpy
-matplotlib
 scikit-learn
+statsmodels
 tensorflow
-keras
 openpyxl
-xlrd
