@@ -9,6 +9,7 @@ import tensorflow as tf
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense, Dropout
 import warnings
+import streamlit as st
 warnings.filterwarnings('ignore')
 
 # Set seed agar hasil selalu konsisten saat didemokan
@@ -189,15 +190,36 @@ def simulate_inventory(p_ens_test, sigma_e_val, lead_time=2.0, z_score=1.65):
 
 # Contoh Eksekusi Keseluruhan Pipeline
 if __name__ == "__main__":
+    st.set_page_config(page_title="Dashboard Forecasting & Inventory", layout="wide")
+    
+    st.title("Sistem Simulasi Peramalan Permintaan dan Persediaan Gudang")
+    st.markdown("Dashboard ini menampilkan hasil klasifikasi multi-SKU dan perhitungan simulasi Safety Stock.")
+    
     filepath = "Data_Penjualan_upload.xls"
-    weekly_pivot = load_and_clean_data(filepath)
-    df_classes = classify_skus(weekly_pivot)
     
-    # Contoh pengujian 1 SKU representatif
-    sku_target = "NARAXONE KEMASAN 1 LITER"
-    preds, actuals, sigma_e = train_and_evaluate_model(sku_target, weekly_pivot)
-    inv_decision = simulate_inventory(preds, sigma_e)
+    with st.spinner('Memuat dan membersihkan data penjualan...'):
+        weekly_pivot = load_and_clean_data(filepath)
+        df_classes = classify_skus(weekly_pivot)
     
-    print(f"Hasil Evaluasi Operasional untuk: {sku_target}")
-    print(f"Safety Stock yang disarankan : {inv_decision['Safety_Stock']} unit")
-    print(f"Reorder Point (ROP)          : {inv_decision['Reorder_Point']} unit")
+    st.success("Data berhasil dimuat!")
+    
+    # Menampilkan Tabel Klasifikasi
+    st.subheader("Distribusi Pola Permintaan 145 SKU")
+    st.dataframe(df_classes, use_container_width=True)
+    
+    # Pilih SKU untuk dievaluasi
+    st.subheader("Simulasi Safety Stock dan Reorder Point")
+    sku_target = st.selectbox("Pilih Produk (SKU):", df_classes['SKU'].unique())
+    
+    if st.button("Jalankan Evaluasi Model"):
+        with st.spinner(f'Melatih model Machine Learning & Ensemble untuk {sku_target}...'):
+            preds, actuals, sigma_e = train_and_evaluate_model(sku_target, weekly_pivot)
+            inv_decision = simulate_inventory(preds, sigma_e)
+            
+        st.write(f"### Hasil Evaluasi Operasional untuk: **{sku_target}**")
+        
+        # Tampilkan hasil dalam bentuk kartu metrik (metric cards) yang cantik
+        col1, col2, col3 = st.columns(3)
+        col1.metric(label="Std. Error Validasi (\u03C3e)", value=f"{inv_decision['Sigma_e_Val']} unit")
+        col2.metric(label="Rekomendasi Safety Stock", value=f"{inv_decision['Safety_Stock']} unit")
+        col3.metric(label="Reorder Point (ROP)", value=f"{inv_decision['Reorder_Point']} unit")
