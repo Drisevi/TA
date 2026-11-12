@@ -189,7 +189,7 @@ def simulate_inventory(p_ens_test, sigma_e_val, lead_time=2.0, z_score=1.65):
 
 # Contoh Eksekusi Keseluruhan Pipeline
 if __name__ == "__main__":
-    filepath = "Data_Penjualan_SUN_upload.xls"
+    filepath = "Data_Penjualan_upload.xls"
     weekly_pivot = load_and_clean_data(filepath)
     df_classes = classify_skus(weekly_pivot)
     
