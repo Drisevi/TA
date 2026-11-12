@@ -234,4 +234,4 @@ if __name__ == "__main__":
             col2.metric(label="Rekomendasi Safety Stock", value=f"{inv_decision['Safety_Stock']} unit")
             col3.metric(label="Reorder Point (ROP)", value=f"{inv_decision['Reorder_Point']} unit")
     else:
-        st.info("Silakan unggah file Excel data penjualan (misalnya: Data_Penjualan_SUN_upload.xls) untuk memulai simulasi.")
+        st.info("Silakan unggah file Excel data penjualan (misalnya: Data_Penjualan_upload.xls) untuk memulai simulasi.")
