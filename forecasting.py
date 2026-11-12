@@ -195,31 +195,37 @@ if __name__ == "__main__":
     st.title("Sistem Simulasi Peramalan Permintaan dan Persediaan Gudang")
     st.markdown("Dashboard ini menampilkan hasil klasifikasi multi-SKU dan perhitungan simulasi Safety Stock.")
     
-    filepath = "Data_Penjualan_upload.xls"
+    # 1. Tambahkan Widget Upload File di sini
+    uploaded_file = st.file_uploader("Unggah File Data Penjualan Gudang (.xls / .xlsx)", type=['xls', 'xlsx'])
     
-    with st.spinner('Memuat dan membersihkan data penjualan...'):
-        weekly_pivot = load_and_clean_data(filepath)
-        df_classes = classify_skus(weekly_pivot)
-    
-    st.success("Data berhasil dimuat!")
-    
-    # Menampilkan Tabel Klasifikasi
-    st.subheader("Distribusi Pola Permintaan 145 SKU")
-    st.dataframe(df_classes, use_container_width=True)
-    
-    # Pilih SKU untuk dievaluasi
-    st.subheader("Simulasi Safety Stock dan Reorder Point")
-    sku_target = st.selectbox("Pilih Produk (SKU):", df_classes['SKU'].unique())
-    
-    if st.button("Jalankan Evaluasi Model"):
-        with st.spinner(f'Melatih model Machine Learning & Ensemble untuk {sku_target}...'):
-            preds, actuals, sigma_e = train_and_evaluate_model(sku_target, weekly_pivot)
-            inv_decision = simulate_inventory(preds, sigma_e)
-            
-        st.write(f"### Hasil Evaluasi Operasional untuk: **{sku_target}**")
+    # 2. Jika file sudah diunggah, baru jalankan proses datanya
+    if uploaded_file is not None:
+        with st.spinner('Memuat dan membersihkan data penjualan...'):
+            # Kita bisa mem-passing uploaded_file langsung ke fungsi pandas read_excel
+            weekly_pivot = load_and_clean_data(uploaded_file)
+            df_classes = classify_skus(weekly_pivot)
         
-        # Tampilkan hasil dalam bentuk kartu metrik (metric cards) yang cantik
-        col1, col2, col3 = st.columns(3)
-        col1.metric(label="Std. Error Validasi (\u03C3e)", value=f"{inv_decision['Sigma_e_Val']} unit")
-        col2.metric(label="Rekomendasi Safety Stock", value=f"{inv_decision['Safety_Stock']} unit")
-        col3.metric(label="Reorder Point (ROP)", value=f"{inv_decision['Reorder_Point']} unit")
+        st.success("Data berhasil dimuat dan dibersihkan!")
+        
+        # Menampilkan Tabel Klasifikasi
+        st.subheader("Distribusi Pola Permintaan SKU")
+        st.dataframe(df_classes, use_container_width=True)
+        
+        # Pilih SKU untuk dievaluasi
+        st.subheader("Simulasi Safety Stock dan Reorder Point")
+        sku_target = st.selectbox("Pilih Produk (SKU):", df_classes['SKU'].unique())
+        
+        if st.button("Jalankan Evaluasi Model"):
+            with st.spinner(f'Melatih model Machine Learning & Ensemble untuk {sku_target}...'):
+                preds, actuals, sigma_e = train_and_evaluate_model(sku_target, weekly_pivot)
+                inv_decision = simulate_inventory(preds, sigma_e)
+                
+            st.write(f"### Hasil Evaluasi Operasional untuk: **{sku_target}**")
+            
+            # Tampilkan hasil dalam bentuk kartu metrik (metric cards) yang cantik
+            col1, col2, col3 = st.columns(3)
+            col1.metric(label="Std. Error Validasi (\u03C3e)", value=f"{inv_decision['Sigma_e_Val']} unit")
+            col2.metric(label="Rekomendasi Safety Stock", value=f"{inv_decision['Safety_Stock']} unit")
+            col3.metric(label="Reorder Point (ROP)", value=f"{inv_decision['Reorder_Point']} unit")
+    else:
+        st.info("Silakan unggah file Excel data penjualan (misalnya: Data_Penjualan_SUN_upload.xls) untuk memulai simulasi.")
