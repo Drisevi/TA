@@ -20,10 +20,24 @@ def load_and_clean_data(file):
     df_raw = pd.read_excel(file, sheet_name='Rekap')
     df_raw['Invoice Date'] = pd.to_datetime(df_raw['Invoice Date'], errors='coerce')
     df_raw['Quantity'] = pd.to_numeric(df_raw['Quantity'], errors='coerce')
-    
-    df_clean = df_raw.drop_duplicates().copy()
-    full_weeks = pd.date_range(start=df_clean['Invoice Date'].min(), end=df_clean['Invoice Date'].max(), freq='W')
-    
+
+    # Pemisahan transaksi retur/koreksi (Quantity <= 0) sesuai Tabel 2
+    df_pos = df_raw[df_raw['Quantity'] > 0].copy()
+
+    # Eliminasi duplikasi identik pada 4 atribut utama
+    dup_cols = ['Invoice No.', 'Invoice Date', 'Item Description', 'Quantity']
+    if all(c in df_pos.columns for c in dup_cols):
+        df_clean = df_pos.drop_duplicates(subset=dup_cols).copy()
+    else:
+        df_clean = df_pos.drop_duplicates().copy()
+
+    # Kalender penuh 139 minggu (109 latih + 28 uji)
+    full_weeks = pd.date_range(
+        start=df_clean['Invoice Date'].min(),
+        end=df_clean['Invoice Date'].max() + pd.Timedelta(days=6),
+        freq='W'
+    )
+
     weekly_pivot = (
         df_clean.groupby([pd.Grouper(key='Invoice Date', freq='W'), 'Item Description'])['Quantity']
         .sum()
@@ -102,7 +116,7 @@ def train_and_evaluate_model(sku_name, weekly_pivot):
         rf.fit(X_t, y_t, sample_weight=sw)
         oof_preds['RF'].extend(np.maximum(0.0, rf.predict(X_v)))
         
-        svr = SVR(kernel='rbf', C=1.5, gamma='scale')
+        svr = SVR(kernel='rbf', C=1.5, epsilon=0.05, gamma='scale')
         svr.fit(X_tr_s, y_tr_s, sample_weight=sw)
         oof_preds['SVR'].extend(np.maximum(0.0, sc_y.inverse_transform(svr.predict(X_val_s).reshape(-1, 1)).ravel()))
         
@@ -143,7 +157,7 @@ def train_and_evaluate_model(sku_name, weekly_pivot):
     rf_full = RandomForestRegressor(n_estimators=100, max_depth=4, min_samples_leaf=4, random_state=42).fit(X_train, y_train, sample_weight=sw_full)
     p_rf_test = np.maximum(0.0, rf_full.predict(X_test))
     
-    svr_full = SVR(kernel='rbf', C=1.5, gamma='scale').fit(X_train_s, y_train_s, sample_weight=sw_full)
+    svr_full = SVR(kernel='rbf', C=1.5, epsilon=0.05, gamma='scale').fit(X_train_s, y_train_s, sample_weight=sw_full)
     p_svr_test = np.maximum(0.0, sc_y_full.inverse_transform(svr_full.predict(X_test_s).reshape(-1, 1)).ravel())
     
     lstm_full = Sequential([LSTM(32, activation='relu', input_shape=(X_train_s.shape[1], 1)), Dropout(0.2), Dense(1)])
@@ -159,17 +173,19 @@ def simulate_inventory(p_ens_test, y_test, sigma_e_val, lead_time=2.0, z_score=1
     ss = z_score * sigma_e_val * np.sqrt(lead_time)
     d_hat_weekly = np.mean(p_ens_test)
     rop = (d_hat_weekly * lead_time) + ss
-    
-    # Hitung fill rate / stockout secara realistis berdasarkan proyeksi
-    stockouts = sum(y_test > (d_hat_weekly + ss))
-    fill_rate = ((len(y_test) - stockouts) / len(y_test)) * 100
-    
+
+    # Hitung minggu stockout & Cycle Service Level (CSL) secara dinamis
+    stockouts = int(np.sum(y_test > (p_ens_test + ss)))
+    n_weeks = len(y_test)
+    csl = ((n_weeks - stockouts) / n_weeks) * 100
+
     return {
         'Sigma_e_Val': round(sigma_e_val, 2),
         'Safety_Stock': round(ss, 2),
         'Reorder_Point': round(rop, 2),
         'Stockouts': stockouts,
-        'Fill_Rate': round(fill_rate, 2)
+        'N_Weeks': n_weeks,
+        'CSL': round(csl, 2)
     }
 
 # ==========================================
@@ -211,6 +227,10 @@ if __name__ == "__main__":
             col2.metric(label="Rekomendasi Safety Stock", value=f"{inv_decision['Safety_Stock']:,.2f} unit".replace(',', '.'))
             col3.metric(label="Reorder Point (ROP)", value=f"{inv_decision['Reorder_Point']:,.2f} unit".replace(',', '.'))
             
-            st.info(f"**Simulasi Aliran Persediaan:** Estimasi model ini menghasilkan Fill Rate sebesar **{inv_decision['Fill_Rate']}%** (terjadi {inv_decision['Stockouts']} minggu *stockout* dari 28 minggu pengujian).")
+            st.info(
+    f"**Simulasi Aliran Persediaan:** Estimasi model ini menghasilkan **Cycle Service Level (CSL)** "
+    f"(proporsi minggu tanpa *stockout*) sebesar **{inv_decision['CSL']}%** "
+    f"(terjadi {inv_decision['Stockouts']} minggu *stockout* dari {inv_decision['N_Weeks']} minggu pengujian)."
+)
     else:
         st.info("Silakan unggah file Excel data penjualan (misalnya: Data_Penjualan_SUN_upload.xls) untuk memulai simulasi.")
