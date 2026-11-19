@@ -14,7 +14,7 @@ from tensorflow.keras.models import Sequential
 # ==========================================
 # KONFIGURASI FILE EXCEL
 # ==========================================
-FILE_PATH = "Data_Penjualan_SUN_upload.xlsx"  # Ubah sesuai nama file Excel Anda
+FILE_PATH = "Data_Penjualan_upload.xls"  # Ubah sesuai nama file Excel Anda
 SHEET_NAME = "Rekap"
 
 TARGET_4_SKUS = [
